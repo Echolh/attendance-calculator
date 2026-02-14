@@ -326,7 +326,6 @@ export const useAttendanceStore = create<AttendanceState>((set, get) => ({
 
     try {
       await saveDailyRecords(state.currentWeek.records);
-      console.log("数据已保存");
     } catch (error) {
       console.error("保存失败:", error);
     }

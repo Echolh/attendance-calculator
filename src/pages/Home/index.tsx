@@ -30,7 +30,7 @@ import {
 import { useAttendanceStore } from "../../stores/attendance.store";
 import type { WorkRecord } from "../../types/attendance.types";
 import { createEmptyWorkRecord } from "../../utils/calculation.utils";
-import { timeToMinutes } from "../../utils/time.utils";
+import { isCompleteTime, timeToMinutes } from "../../utils/time.utils";
 import "./index.css";
 
 const { RangePicker } = DatePicker;
@@ -397,17 +397,23 @@ const Home: React.FC = () => {
       );
 
       if (field === "checkInTime") {
-        // 填完上班时间，跳转到下班时间
-        const nextKey = `${record.id}-checkOutTime`;
-        const nextInput = inputRefs.current.get(nextKey);
-        nextInput?.focus();
-      } else if (field === "checkOutTime") {
-        // 填完下班时间，跳转到下一天的上班时间
-        const nextRecord = currentWeek.records[recordIndex + 1];
-        if (nextRecord) {
-          const nextKey = `${nextRecord.id}-checkInTime`;
+        // 只有当时间格式完整时才跳转
+        if (newValue && isCompleteTime(String(newValue))) {
+          // 填完上班时间，跳转到下班时间
+          const nextKey = `${record.id}-checkOutTime`;
           const nextInput = inputRefs.current.get(nextKey);
           nextInput?.focus();
+        }
+      } else if (field === "checkOutTime") {
+        // 只有当时间格式完整时才跳转
+        if (newValue && isCompleteTime(String(newValue))) {
+          // 填完下班时间，跳转到下一天的上班时间
+          const nextRecord = currentWeek.records[recordIndex + 1];
+          if (nextRecord) {
+            const nextKey = `${nextRecord.id}-checkInTime`;
+            const nextInput = inputRefs.current.get(nextKey);
+            nextInput?.focus();
+          }
         }
       } else if (field === "appliedOvertime") {
         // 填完加班时长，也跳转到下一天的上班时间
@@ -457,11 +463,6 @@ const Home: React.FC = () => {
   if (!currentWeek || !calculationResult) {
     return <div className="loading">加载中...</div>;
   }
-
-  // 调试日志
-  console.log("Debug: currentWeek =", currentWeek);
-  console.log("Debug: calculationResult =", calculationResult);
-  console.log("Debug: showWelcome =", showWelcome);
 
   // 根据实际日期判断"今天"
   const todayDate = dayjs().format("YYYY-MM-DD");
@@ -665,8 +666,6 @@ const Home: React.FC = () => {
                             }}
                             type="time"
                             className="time-input"
-                            min="08:00"
-                            step="60"
                             value={record.checkInTime}
                             onChange={(e) =>
                               handleRecordChange(
@@ -675,6 +674,11 @@ const Home: React.FC = () => {
                                 e.target.value,
                               )
                             }
+                            onKeyDown={(e) => {
+                              if (e.key === "Delete" || e.key === "Backspace") {
+                                setManualFocus(true);
+                              }
+                            }}
                           />
                           <span className="time-separator">→</span>
                           <input
@@ -687,8 +691,6 @@ const Home: React.FC = () => {
                             }}
                             type="time"
                             className="time-input"
-                            min="18:00"
-                            step="60"
                             value={record.checkOutTime || ""}
                             onChange={(e) =>
                               handleRecordChange(
@@ -697,7 +699,49 @@ const Home: React.FC = () => {
                                 e.target.value,
                               )
                             }
+                            onKeyDown={(e) => {
+                              if (e.key === "Delete" || e.key === "Backspace") {
+                                setManualFocus(true);
+                              }
+                            }}
                           />
+                          {record.effectiveHours !== undefined && (
+                            <div className="record-hours-inline">
+                              {(() => {
+                                const hours = Math.floor(record.effectiveHours);
+                                const mins = Math.round(
+                                  (record.effectiveHours % 1) * 60,
+                                );
+                                const totalDiffMins = Math.round(
+                                  (record.effectiveHours - 8) * 60,
+                                );
+
+                                const timeStr =
+                                  hours > 0 ? `${hours}h${mins}m` : `${mins}m`;
+                                const diffStr =
+                                  totalDiffMins > 0
+                                    ? `(+${totalDiffMins}m)`
+                                    : totalDiffMins < 0
+                                      ? `(${totalDiffMins}m)`
+                                      : "";
+
+                                return (
+                                  <span
+                                    className={
+                                      totalDiffMins > 0
+                                        ? "hours-positive"
+                                        : totalDiffMins < 0
+                                          ? "hours-negative"
+                                          : ""
+                                    }
+                                  >
+                                    {timeStr}
+                                    {diffStr}
+                                  </span>
+                                );
+                              })()}
+                            </div>
+                          )}
                         </div>
 
                         <div className="overtime-input">
@@ -732,13 +776,6 @@ const Home: React.FC = () => {
                           />
                           <span className="overtime-label">h 加班</span>
                         </div>
-
-                        {record.effectiveHours !== undefined && (
-                          <div className="record-hours">
-                            {Math.floor(record.effectiveHours)}h{" "}
-                            {Math.round((record.effectiveHours % 1) * 60)}m
-                          </div>
-                        )}
                       </div>
                     </div>
                   );

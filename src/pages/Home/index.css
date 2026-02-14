@@ -283,7 +283,7 @@
 .time-inputs {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 12px;
   flex: 1;
 }
 
@@ -352,6 +352,24 @@
   color: #333;
   min-width: 80px;
   text-align: right;
+}
+
+.record-hours-inline {
+  font-size: 12px;
+  font-weight: 500;
+  min-width: 90px;
+  text-align: center;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: #f5f5f5;
+}
+
+.hours-positive {
+  color: #52c41a;
+}
+
+.hours-negative {
+  color: #8c8c8c;
 }
 
 .tips-card {

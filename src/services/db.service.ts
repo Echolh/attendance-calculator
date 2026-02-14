@@ -290,12 +290,7 @@ export async function cleanupOldRecords(): Promise<void> {
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
     const cutoffDate = thirtyDaysAgo.toISOString().split("T")[0];
 
-    const count = await db.dailyRecords
-      .where("date")
-      .below(cutoffDate)
-      .delete();
-
-    console.log(`已清理 ${count} 条30天之前的记录`);
+    await db.dailyRecords.where("date").below(cutoffDate).delete();
   } catch (error) {
     console.error("清理旧记录失败:", error);
     throw new Error("清理旧记录失败");

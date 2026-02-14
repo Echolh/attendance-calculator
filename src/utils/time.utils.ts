@@ -3,6 +3,15 @@
  */
 
 /**
+ * 判断时间字符串是否完整（格式为 HH:mm）
+ * @param timeStr 时间字符串
+ * @returns 是否为完整的时间格式
+ */
+export function isCompleteTime(timeStr: string): boolean {
+  return /^\d{2}:\d{2}$/.test(timeStr);
+}
+
+/**
  * 将时间字符串 (HH:mm) 转换为分钟数
  * @param timeStr 时间字符串，格式 "HH:mm"
  * @returns 分钟数（从 00:00 开始）
