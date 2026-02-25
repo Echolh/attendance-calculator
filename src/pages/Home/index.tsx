@@ -60,6 +60,8 @@ const Home: React.FC = () => {
   const [showVersionLog, setShowVersionLog] = useState<boolean>(false);
   const [manualFocus, setManualFocus] = useState<boolean>(false);
   const [showWelcome, setShowWelcome] = useState<boolean>(true);
+  const [saveStatus, setSaveStatus] = useState<"saved" | "saving" | "unsaved" | "error">("saved");
+  const [saveStatusText, setSaveStatusText] = useState<string>("已自动保存");
 
   // 为每个输入框创建 ref
   const inputRefs = useRef<Map<string, HTMLInputElement>>(new Map());
@@ -80,6 +82,8 @@ const Home: React.FC = () => {
   // 数据变化时触发自动保存
   useEffect(() => {
     if (currentWeek && currentWeek.records.length > 0) {
+      setSaveStatus("unsaved");
+      setSaveStatusText("有未保存更改...");
       autoSave();
     }
   }, [currentWeek, autoSave]);
@@ -231,11 +235,18 @@ const Home: React.FC = () => {
       return;
     }
 
+    setSaveStatus("saving");
+    setSaveStatusText("保存中...");
+
     try {
       await manualSave();
       message.success("✅ 已保存");
+      setSaveStatus("saved");
+      setSaveStatusText("已保存");
     } catch {
       message.error("❌ 保存失败");
+      setSaveStatus("error");
+      setSaveStatusText("保存失败");
     }
   };
 
@@ -526,6 +537,10 @@ const Home: React.FC = () => {
       <div className="home-page" ref={exportRef}>
         <div className="header">
           <h1 className="app-title">考勤计算器</h1>
+          <div className={`save-status save-status-${saveStatus}`}>
+            <span className="save-status-dot"></span>
+            <span className="save-status-text">{saveStatusText}</span>
+          </div>
         </div>
 
         <div className="main-layout">
