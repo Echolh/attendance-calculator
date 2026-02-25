@@ -206,8 +206,10 @@ function calculateTodayOffTime(
  * @returns 工作记录
  */
 export function createEmptyWorkRecord(date: string): WorkRecord {
+  // 使用更可靠的 ID 生成方式：日期 + 随机数
+  const randomId = Math.random().toString(36).substring(2, 11);
   return {
-    id: `${date}-${Date.now()}`,
+    id: `${date}-${randomId}`,
     date,
     checkInTime: "",
     checkOutTime: undefined,

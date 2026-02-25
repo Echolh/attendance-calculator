@@ -39,6 +39,7 @@ const Home: React.FC = () => {
   const {
     currentWeek,
     calculationResult,
+    config,
     createNewWeek,
     updateRecord,
     setDateRange: setStoreDateRange,
@@ -87,6 +88,9 @@ const Home: React.FC = () => {
   useEffect(() => {
     return () => {
       clearAutoSaveTimer();
+      // 清除所有跳转定时器
+      jumpTimersRef.current.forEach(timer => clearTimeout(timer));
+      jumpTimersRef.current.clear();
     };
   }, [clearAutoSaveTimer]);
 
@@ -168,16 +172,16 @@ const Home: React.FC = () => {
       (r) => !newDates.includes(r.date),
     );
 
-    // 添加新记录
-    datesToAdd.forEach((date) => {
-      const newRecord = createEmptyWorkRecord(date);
-      currentWeek.records.push(newRecord);
-    });
+    // 使用不可变更新：创建新记录数组
+    const newRecords = datesToAdd.map((date) => createEmptyWorkRecord(date));
 
-    // 删除不需要的记录
-    const updatedRecords = currentWeek.records.filter(
-      (r) => !recordsToDelete.find((del) => del.id === r.id),
-    );
+    // 合并现有记录（排除需要删除的）和新记录
+    const updatedRecords = [
+      ...currentWeek.records.filter(
+        (r) => !recordsToDelete.find((del) => del.id === r.id),
+      ),
+      ...newRecords,
+    ];
 
     // 按日期排序
     updatedRecords.sort((a, b) => a.date.localeCompare(b.date));
@@ -212,8 +216,10 @@ const Home: React.FC = () => {
       setSyncedThisMonth(true);
 
       message.success("✅ 假期数据同步成功");
-    } catch {
-      message.error("❌ 同步失败，请稍后重试");
+    } catch (error) {
+      console.error("同步失败:", error);
+      const errorMessage = error instanceof Error ? error.message : "未知错误";
+      message.error(`❌ 同步失败: ${errorMessage}，请稍后重试`);
     } finally {
       setSyncing(false);
     }
@@ -315,28 +321,28 @@ const Home: React.FC = () => {
     if (field === "checkInTime") {
       if (
         newValue &&
-        timeToMinutes(String(newValue)) < timeToMinutes("08:00")
+        timeToMinutes(String(newValue)) < timeToMinutes(config.flexibleStartEarly)
       ) {
-        newValue = "08:00";
-        message.info("🕘 上班时间已调整为 8:00（不能早于8点）");
+        newValue = config.flexibleStartEarly;
+        message.info(`🕘 上班时间已调整为 ${config.flexibleStartEarly}（不能早于该时间）`);
       }
     }
 
     if (field === "checkOutTime" && newValue) {
       const checkOutMinutes = timeToMinutes(String(newValue));
-      const minOffTime = timeToMinutes("18:00");
+      const minOffTime = timeToMinutes(config.flexibleEndEarly);
 
       if (checkOutMinutes < minOffTime) {
         // 检查今天是否需要工作满8小时
         if (calculationResult) {
           const todayRequired = Math.max(calculationResult.remainingHours, 0);
-          // 如果今天需要工作满8小时，则不允许早于18:00
-          if (todayRequired >= 8) {
-            message.warning("⚠️ 下班时间不能早于 18:00");
+          // 如果今天需要工作满8小时，则不允许早于配置时间
+          if (todayRequired >= config.standardWorkHours) {
+            message.warning(`⚠️ 下班时间不能早于 ${config.flexibleEndEarly}`);
             return;
           }
         } else {
-          message.warning("⚠️ 下班时间不能早于 18:00");
+          message.warning(`⚠️ 下班时间不能早于 ${config.flexibleEndEarly}`);
           return;
         }
       }
@@ -376,8 +382,8 @@ const Home: React.FC = () => {
 
           let workMinutes = checkOutMinutes - checkInMinutes;
 
-          const lunchStart = timeToMinutes("12:00");
-          const lunchEnd = timeToMinutes("14:00");
+          const lunchStart = timeToMinutes(config.lunchStart);
+          const lunchEnd = timeToMinutes(config.lunchEnd);
 
           if (checkInMinutes < lunchEnd && checkOutMinutes > lunchStart) {
             workMinutes -= lunchEnd - lunchStart;
@@ -385,16 +391,16 @@ const Home: React.FC = () => {
 
           const workHours = workMinutes / 60;
 
-          if (workHours <= 8) {
-            message.warning("⚠️ 工作时长不足8小时，不能填写加班时长");
+          if (workHours <= config.standardWorkHours) {
+            message.warning(`⚠️ 工作时长不足${config.standardWorkHours}小时，不能填写加班时长`);
             return;
           }
 
-          const maxOvertime = Math.round((workHours - 8) * 10) / 10;
+          const maxOvertime = Math.round((workHours - config.standardWorkHours) * 10) / 10;
 
           if (overtimeValue > maxOvertime + 0.01) {
             message.warning(
-              `⚠️ 加班时长不能超过超出8小时的部分（最多${maxOvertime.toFixed(1)}小时）`,
+              `⚠️ 加班时长不能超过超出${config.standardWorkHours}小时的部分（最多${maxOvertime.toFixed(1)}小时）`,
             );
             return;
           }
@@ -505,11 +511,11 @@ const Home: React.FC = () => {
   const todayIndex = currentWeek.records.findIndex((r) => r.date === todayDate);
 
   // 计算进度条宽度（基于工时完成度）
-  const progressWidth = Math.min(
-    100,
+  const progressPercent =
     (calculationResult.totalEffectiveHours / calculationResult.requiredHours) *
-      100,
-  );
+      100;
+  const progressWidth = Math.min(100, progressPercent);
+  const isOverProgress = progressPercent > 100;
 
   // 进度显示：已完成天数/总天数
   const totalDays = currentWeek.records.length;
@@ -592,11 +598,18 @@ const Home: React.FC = () => {
                 </div>
                 <div className="progress-bar">
                   <div
-                    className="progress-fill"
+                    className={`progress-fill${isOverProgress ? " over-progress" : ""}`}
                     style={{ width: progressWidth + "%" }}
                   />
                 </div>
-                <div className="progress-text">{progressText}</div>
+                <div className="progress-text">
+                  {progressText}
+                  {isOverProgress && (
+                    <span className="over-progress-text">
+                      {" "}(超额{Math.floor(progressPercent - 100)}%)
+                    </span>
+                  )}
+                </div>
               </div>
             </Card>
 

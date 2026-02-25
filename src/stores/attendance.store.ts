@@ -144,7 +144,12 @@ export const useAttendanceStore = create<AttendanceState>((set, get) => ({
         if (updated.checkInTime && updated.checkOutTime) {
           return updateWorkRecordHours(updated, state.config);
         }
-        return updated;
+        // 如果上下班时间不完整，清除计算字段
+        return {
+          ...updated,
+          effectiveHours: undefined,
+          overtime: undefined,
+        };
       }
       return record;
     });
