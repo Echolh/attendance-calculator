@@ -43,7 +43,6 @@ const Home: React.FC = () => {
     createNewWeek,
     updateRecord,
     setDateRange: setStoreDateRange,
-    autoSave,
     manualSave,
     cleanupOldData,
     clearAutoSaveTimer,
@@ -84,9 +83,22 @@ const Home: React.FC = () => {
     if (currentWeek && currentWeek.records.length > 0) {
       setSaveStatus("unsaved");
       setSaveStatusText("有未保存更改...");
-      autoSave();
+
+      // 立即执行自动保存
+      const doAutoSave = async () => {
+        try {
+          await manualSave();
+          setSaveStatus("saved");
+          setSaveStatusText("已自动保存");
+        } catch {
+          setSaveStatus("error");
+          setSaveStatusText("保存失败");
+        }
+      };
+
+      doAutoSave();
     }
-  }, [currentWeek, autoSave]);
+  }, [currentWeek, manualSave]);
 
   // 组件卸载时清除定时器
   useEffect(() => {
