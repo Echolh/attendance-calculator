@@ -122,9 +122,15 @@ export function calculateWeekResult(
 
   // 6. 如果有今天的记录，计算最早下班时间
   if (todayRecord && todayRecord.checkInTime) {
+    // 计算"相对于今天8小时"的剩余需求
+    // 比如：今天是第2天，前1天应完成8h，实际完成8.067h，超额0.067h
+    // 所以今天只需要工作 8 - 0.067 = 7.933h
+    const expectedHoursBeforeToday = actualWorkDays * config.standardWorkHours;
+    const todayRemaining = expectedHoursBeforeToday - totalEffectiveHours + config.standardWorkHours;
+
     const todayResult = calculateTodayOffTime(
       todayRecord.checkInTime,
-      remainingHours,
+      todayRemaining,
       config,
     );
     result.todayOffTime = todayResult.offTime;
@@ -146,14 +152,16 @@ function calculateTodayOffTime(
   remainingHours: number,
   config: SystemConfig,
 ): { offTime: string; overtime: number } {
-  // 1. 计算今天需要的工时（最多 8 小时）
-  const todayRequired = Math.min(
-    Math.max(remainingHours, 0),
-    config.standardWorkHours,
-  );
+  // 1. 计算今天需要的工时
+  // remainingHours 是相对于总要求工时的剩余（如31.933小时）
+  // 我们需要转换为相对于今天8小时工时的需求
+  // 如果 remainingHours > 8，说明今天需要工作满8小时
+  // 如果 remainingHours < 8，说明今天可以少工作一些（用之前的加班抵扣）
+  // 比如 remainingHours = 7.933，说明今天只需要工作7小时56分钟
+  const todayRequired = Math.max(Math.min(remainingHours, config.standardWorkHours), 0);
 
-  // 2. 转换为分钟
-  const todayRequiredMinutes = todayRequired * 60;
+  // 2. 转换为分钟（使用 Math.round 避免浮点数精度问题）
+  const todayRequiredMinutes = Math.round(todayRequired * 60);
 
   // 3. 从上班时间开始计算
   const checkInMinutes = timeToMinutes(checkInTime);
@@ -167,9 +175,14 @@ function calculateTodayOffTime(
     offMinutes += lunchEnd - lunchStart;
   }
 
-  // 5. 确保下班时间不早于18:00
+  // 5. 只有在需要工作时长大于等于8小时时，才强制下班时间不早于18:00
   const flexibleEndEarly = timeToMinutes(config.flexibleEndEarly);
-  const actualOffMinutes = Math.max(offMinutes, flexibleEndEarly);
+  let actualOffMinutes = offMinutes;
+
+  // 如果今天需要工作时长大于等于8小时，才强制要求不早于18:00
+  if (todayRequired >= config.standardWorkHours) {
+    actualOffMinutes = Math.max(offMinutes, flexibleEndEarly);
+  }
 
   // 6. 计算实际加班时长
   // 如果实际下班时间晚于计算出的下班时间，说明超出了工时要求

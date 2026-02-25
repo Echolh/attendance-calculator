@@ -63,6 +63,9 @@ const Home: React.FC = () => {
   // 为每个输入框创建 ref
   const inputRefs = useRef<Map<string, HTMLInputElement>>(new Map());
 
+  // 跟踪每个输入框的跳转定时器
+  const jumpTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+
   // 设置 dayjs 中文语言
   useEffect(() => {
     dayjs.locale("zh-cn");
@@ -320,9 +323,22 @@ const Home: React.FC = () => {
     }
 
     if (field === "checkOutTime" && newValue) {
-      if (timeToMinutes(String(newValue)) < timeToMinutes("18:00")) {
-        message.warning("⚠️ 下班时间不能早于 18:00");
-        return;
+      const checkOutMinutes = timeToMinutes(String(newValue));
+      const minOffTime = timeToMinutes("18:00");
+
+      if (checkOutMinutes < minOffTime) {
+        // 检查今天是否需要工作满8小时
+        if (calculationResult) {
+          const todayRequired = Math.max(calculationResult.remainingHours, 0);
+          // 如果今天需要工作满8小时，则不允许早于18:00
+          if (todayRequired >= 8) {
+            message.warning("⚠️ 下班时间不能早于 18:00");
+            return;
+          }
+        } else {
+          message.warning("⚠️ 下班时间不能早于 18:00");
+          return;
+        }
       }
     }
 
@@ -388,35 +404,58 @@ const Home: React.FC = () => {
 
     updateRecord(record.id, { [field]: newValue });
 
-    // 智能跳转光标（仅在用户没有手动点击的情况下）
+    // 智能跳转光标（带延迟，避免在输入过程中跳转）
     if (!manualFocus) {
-      // 找到当前记录的索引
-      if (!currentWeek) return;
-      const recordIndex = currentWeek.records.findIndex(
-        (r) => r.id === record.id,
-      );
+      const fieldKey = `${record.id}-${field}`;
 
-      if (field === "checkInTime") {
-        // 只有当时间格式完整时才跳转
-        if (newValue && isCompleteTime(String(newValue))) {
-          // 填完上班时间，跳转到下班时间
-          const nextKey = `${record.id}-checkOutTime`;
+      // 清除之前的定时器
+      const existingTimer = jumpTimersRef.current.get(fieldKey);
+      if (existingTimer) {
+        clearTimeout(existingTimer);
+      }
+
+      // 设置新的定时器，800ms后跳转
+      const timer = setTimeout(() => {
+        // 延迟执行以确保 state 已更新
+        scheduleJump(record.id, field);
+      }, 800);
+
+      jumpTimersRef.current.set(fieldKey, timer);
+    }
+
+    // 重置手动标记
+    setManualFocus(false);
+  };
+
+  // 执行跳转逻辑
+  const scheduleJump = (recordId: string, field: keyof WorkRecord) => {
+    if (!currentWeek) return;
+
+    const record = currentWeek.records.find(r => r.id === recordId);
+    if (!record) return;
+
+    const recordIndex = currentWeek.records.findIndex(
+      (r) => r.id === recordId,
+    );
+    const value = record[field];
+
+    if (field === "checkInTime") {
+      if (value && isCompleteTime(String(value))) {
+        const nextKey = `${recordId}-checkOutTime`;
+        const nextInput = inputRefs.current.get(nextKey);
+        nextInput?.focus();
+      }
+    } else if (field === "checkOutTime") {
+      if (value && isCompleteTime(String(value))) {
+        const nextRecord = currentWeek.records[recordIndex + 1];
+        if (nextRecord) {
+          const nextKey = `${nextRecord.id}-checkInTime`;
           const nextInput = inputRefs.current.get(nextKey);
           nextInput?.focus();
         }
-      } else if (field === "checkOutTime") {
-        // 只有当时间格式完整时才跳转
-        if (newValue && isCompleteTime(String(newValue))) {
-          // 填完下班时间，跳转到下一天的上班时间
-          const nextRecord = currentWeek.records[recordIndex + 1];
-          if (nextRecord) {
-            const nextKey = `${nextRecord.id}-checkInTime`;
-            const nextInput = inputRefs.current.get(nextKey);
-            nextInput?.focus();
-          }
-        }
-      } else if (field === "appliedOvertime") {
-        // 填完加班时长，也跳转到下一天的上班时间
+      }
+    } else if (field === "appliedOvertime") {
+      if (value !== undefined && value !== null && value !== "") {
         const nextRecord = currentWeek.records[recordIndex + 1];
         if (nextRecord) {
           const nextKey = `${nextRecord.id}-checkInTime`;
@@ -425,9 +464,6 @@ const Home: React.FC = () => {
         }
       }
     }
-
-    // 重置手动标记
-    setManualFocus(false);
   };
 
   if (showWelcome) {
@@ -468,15 +504,16 @@ const Home: React.FC = () => {
   const todayDate = dayjs().format("YYYY-MM-DD");
   const todayIndex = currentWeek.records.findIndex((r) => r.date === todayDate);
 
-  const progressPercent = Math.round(
-    (calculationResult.totalEffectiveHours / calculationResult.requiredHours) *
-      100,
-  );
+  // 计算进度条宽度（基于工时完成度）
   const progressWidth = Math.min(
     100,
     (calculationResult.totalEffectiveHours / calculationResult.requiredHours) *
       100,
   );
+
+  // 进度显示：已完成天数/总天数
+  const totalDays = currentWeek.records.length;
+  const progressText = `${calculationResult.workDays}/${totalDays}`;
 
   return (
     <ConfigProvider locale={zhCN}>
@@ -559,7 +596,7 @@ const Home: React.FC = () => {
                     style={{ width: progressWidth + "%" }}
                   />
                 </div>
-                <div className="progress-text">{progressPercent}%</div>
+                <div className="progress-text">{progressText}</div>
               </div>
             </Card>
 
@@ -705,7 +742,7 @@ const Home: React.FC = () => {
                               }
                             }}
                           />
-                          {record.effectiveHours !== undefined && (
+                          {record.checkInTime && record.checkOutTime && record.effectiveHours !== undefined && (
                             <div className="record-hours-inline">
                               {(() => {
                                 const hours = Math.floor(record.effectiveHours);

@@ -34,7 +34,7 @@ export function timeToMinutes(timeStr: string): number {
  */
 export function minutesToTime(minutes: number): string {
   const hours = Math.floor(minutes / 60);
-  const mins = Math.round(minutes % 60);
+  const mins = Math.floor(minutes % 60);
   return `${String(hours).padStart(2, '0')}:${String(mins).padStart(2, '0')}`;
 }
 
