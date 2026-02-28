@@ -179,16 +179,16 @@ const Home: React.FC = () => {
       (r) => !newDates.includes(r.date),
     );
 
-    // 添加新记录
-    datesToAdd.forEach((date) => {
-      const newRecord = createEmptyWorkRecord(date);
-      currentWeek.records.push(newRecord);
-    });
+    // 使用不可变更新：创建新记录数组
+    const newRecords = datesToAdd.map((date) => createEmptyWorkRecord(date));
 
-    // 删除不需要的记录
-    const updatedRecords = currentWeek.records.filter(
-      (r) => !recordsToDelete.find((del) => del.id === r.id),
-    );
+    // 合并现有记录（排除需要删除的）和新记录
+    const updatedRecords = [
+      ...currentWeek.records.filter(
+        (r) => !recordsToDelete.find((del) => del.id === r.id),
+      ),
+      ...newRecords,
+    ];
 
     // 按日期排序
     updatedRecords.sort((a, b) => a.date.localeCompare(b.date));
