@@ -22,7 +22,7 @@ import "dayjs/locale/zh-cn";
 import html2canvas from "html2canvas";
 import React, { useEffect, useRef, useState } from "react";
 import VersionLogModal from "../../components/VersionLogModal";
-import { getLatestVersion } from "../../data/versionLogs";
+import GuideModal from "../../components/GuideModal";
 import {
     isSyncedThisMonth,
     syncHolidays,
@@ -44,6 +44,7 @@ const Home: React.FC = () => {
     createNewWeek,
     updateRecord,
     setDateRange: setStoreDateRange,
+    autoSave,
     manualSave,
     cleanupOldData,
     clearAutoSaveTimer,
@@ -60,42 +61,19 @@ const Home: React.FC = () => {
   const [showVersionLog, setShowVersionLog] = useState<boolean>(false);
   const [manualFocus, setManualFocus] = useState<boolean>(false);
   const [showWelcome, setShowWelcome] = useState<boolean>(true);
-  const [saveStatus, setSaveStatus] = useState<"saved" | "saving" | "unsaved" | "error">("saved");
-  const [saveStatusText, setSaveStatusText] = useState<string>("已自动保存");
-
-  // 获取最新版本信息
-  const latestVersion = getLatestVersion();
-
-  // 用 ref 存储 manualSave，避免依赖变化
-  const manualSaveRef = useRef(manualSave);
-  manualSaveRef.current = manualSave;
+  const [showGuide, setShowGuide] = useState<boolean>(() => {
+    // 从 localStorage 读取是否显示引导
+    const saved = localStorage.getItem('attendance-guide-hidden');
+    return saved !== 'true';
+  });
 
   // 为每个输入框创建 ref
   const inputRefs = useRef<Map<string, HTMLInputElement>>(new Map());
-
-  // 跟踪每个输入框的跳转定时器
-  const jumpTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
 
   // 设置 dayjs 中文语言
   useEffect(() => {
     dayjs.locale("zh-cn");
   }, []);
-
-  // 监听键盘快捷键 Ctrl+S 保存
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      // 检测 Ctrl+S 或 Cmd+S (Mac)
-      if ((e.ctrlKey || e.metaKey) && e.key === 's') {
-        e.preventDefault();
-        handleSave();
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => {
-      window.removeEventListener('keydown', handleKeyDown);
-    };
-  }, [currentWeek]); // 依赖 currentWeek 确保 handleSave 能访问到最新数据
 
   // 组件挂载时清理旧数据
   useEffect(() => {
@@ -105,34 +83,14 @@ const Home: React.FC = () => {
   // 数据变化时触发自动保存
   useEffect(() => {
     if (currentWeek && currentWeek.records.length > 0) {
-      setSaveStatus("unsaved");
-      setSaveStatusText("有未保存更改...");
-
-      // 立即执行自动保存
-      const doAutoSave = async () => {
-        try {
-          await manualSaveRef.current();
-          setSaveStatus("saved");
-          const now = new Date();
-          const timeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
-          setSaveStatusText(`已保存 ${timeStr}`);
-        } catch {
-          setSaveStatus("error");
-          setSaveStatusText("保存失败");
-        }
-      };
-
-      doAutoSave();
+      autoSave();
     }
-  }, [currentWeek]);
+  }, [currentWeek, autoSave]);
 
   // 组件卸载时清除定时器
   useEffect(() => {
     return () => {
       clearAutoSaveTimer();
-      // 清除所有跳转定时器
-      jumpTimersRef.current.forEach(timer => clearTimeout(timer));
-      jumpTimersRef.current.clear();
     };
   }, [clearAutoSaveTimer]);
 
@@ -142,6 +100,13 @@ const Home: React.FC = () => {
       setShowWelcome(true);
     } else {
       setShowWelcome(false);
+      // 检查是否需要显示功能引导
+      const guideHidden = localStorage.getItem('attendance-guide-hidden');
+      if (guideHidden !== 'true') {
+        setTimeout(() => {
+          setShowGuide(true);
+        }, 500);
+      }
     }
   }, [currentWeek]);
 
@@ -214,16 +179,16 @@ const Home: React.FC = () => {
       (r) => !newDates.includes(r.date),
     );
 
-    // 使用不可变更新：创建新记录数组
-    const newRecords = datesToAdd.map((date) => createEmptyWorkRecord(date));
+    // 添加新记录
+    datesToAdd.forEach((date) => {
+      const newRecord = createEmptyWorkRecord(date);
+      currentWeek.records.push(newRecord);
+    });
 
-    // 合并现有记录（排除需要删除的）和新记录
-    const updatedRecords = [
-      ...currentWeek.records.filter(
-        (r) => !recordsToDelete.find((del) => del.id === r.id),
-      ),
-      ...newRecords,
-    ];
+    // 删除不需要的记录
+    const updatedRecords = currentWeek.records.filter(
+      (r) => !recordsToDelete.find((del) => del.id === r.id),
+    );
 
     // 按日期排序
     updatedRecords.sort((a, b) => a.date.localeCompare(b.date));
@@ -258,10 +223,8 @@ const Home: React.FC = () => {
       setSyncedThisMonth(true);
 
       message.success("✅ 假期数据同步成功");
-    } catch (error) {
-      console.error("同步失败:", error);
-      const errorMessage = error instanceof Error ? error.message : "未知错误";
-      message.error(`❌ 同步失败: ${errorMessage}，请稍后重试`);
+    } catch {
+      message.error("❌ 同步失败，请稍后重试");
     } finally {
       setSyncing(false);
     }
@@ -273,20 +236,11 @@ const Home: React.FC = () => {
       return;
     }
 
-    setSaveStatus("saving");
-    setSaveStatusText("保存中...");
-
     try {
       await manualSave();
       message.success("✅ 已保存");
-      setSaveStatus("saved");
-      const now = new Date();
-      const timeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
-      setSaveStatusText(`已保存 ${timeStr}`);
     } catch {
       message.error("❌ 保存失败");
-      setSaveStatus("error");
-      setSaveStatusText("保存失败");
     }
   };
 
@@ -369,41 +323,31 @@ const Home: React.FC = () => {
   ) => {
     let newValue = value;
 
-    // 对于时间字段，只有当格式完整时才进行验证和保存
-    if (field === "checkInTime" || field === "checkOutTime") {
-      const timeStr = String(newValue);
-      // 如果时间格式不完整（只有小时没有分钟），直接保存但不验证
-      if (timeStr && !isCompleteTime(timeStr)) {
-        updateRecord(record.id, { [field]: newValue });
-        return;
-      }
-    }
-
     if (field === "checkInTime") {
       if (
         newValue &&
-        timeToMinutes(String(newValue)) < timeToMinutes(config.flexibleStartEarly)
+        timeToMinutes(String(newValue)) < timeToMinutes("08:00")
       ) {
-        newValue = config.flexibleStartEarly;
-        message.info(`🕘 上班时间已调整为 ${config.flexibleStartEarly}（不能早于该时间）`);
+        newValue = "08:00";
+        message.info("🕘 上班时间已调整为 8:00（不能早于8点）");
       }
     }
 
     if (field === "checkOutTime" && newValue) {
       const checkOutMinutes = timeToMinutes(String(newValue));
-      const minOffTime = timeToMinutes(config.flexibleEndEarly);
-
+      const minOffTime = timeToMinutes("18:00");
+      
       if (checkOutMinutes < minOffTime) {
         // 检查今天是否需要工作满8小时
         if (calculationResult) {
           const todayRequired = Math.max(calculationResult.remainingHours, 0);
-          // 如果今天需要工作满8小时，则不允许早于配置时间
-          if (todayRequired >= config.standardWorkHours) {
-            message.warning(`⚠️ 下班时间不能早于 ${config.flexibleEndEarly}`);
+          // 如果今天需要工作满8小时，则不允许早于18:00
+          if (todayRequired >= 8) {
+            message.warning("⚠️ 下班时间不能早于 18:00");
             return;
           }
         } else {
-          message.warning(`⚠️ 下班时间不能早于 ${config.flexibleEndEarly}`);
+          message.warning("⚠️ 下班时间不能早于 18:00");
           return;
         }
       }
@@ -443,8 +387,8 @@ const Home: React.FC = () => {
 
           let workMinutes = checkOutMinutes - checkInMinutes;
 
-          const lunchStart = timeToMinutes(config.lunchStart);
-          const lunchEnd = timeToMinutes(config.lunchEnd);
+          const lunchStart = timeToMinutes("12:00");
+          const lunchEnd = timeToMinutes("14:00");
 
           if (checkInMinutes < lunchEnd && checkOutMinutes > lunchStart) {
             workMinutes -= lunchEnd - lunchStart;
@@ -452,16 +396,16 @@ const Home: React.FC = () => {
 
           const workHours = workMinutes / 60;
 
-          if (workHours <= config.standardWorkHours) {
-            message.warning(`⚠️ 工作时长不足${config.standardWorkHours}小时，不能填写加班时长`);
+          if (workHours <= 8) {
+            message.warning("⚠️ 工作时长不足8小时，不能填写加班时长");
             return;
           }
 
-          const maxOvertime = Math.round((workHours - config.standardWorkHours) * 10) / 10;
+          const maxOvertime = Math.round((workHours - 8) * 10) / 10;
 
           if (overtimeValue > maxOvertime + 0.01) {
             message.warning(
-              `⚠️ 加班时长不能超过超出${config.standardWorkHours}小时的部分（最多${maxOvertime.toFixed(1)}小时）`,
+              `⚠️ 加班时长不能超过超出8小时的部分（最多${maxOvertime.toFixed(1)}小时）`,
             );
             return;
           }
@@ -471,66 +415,46 @@ const Home: React.FC = () => {
 
     updateRecord(record.id, { [field]: newValue });
 
-    // 智能跳转光标（带延迟，避免在输入过程中跳转）
+    // 智能跳转光标（仅在用户没有手动点击的情况下）
     if (!manualFocus) {
-      const fieldKey = `${record.id}-${field}`;
+      // 找到当前记录的索引
+      if (!currentWeek) return;
+      const recordIndex = currentWeek.records.findIndex(
+        (r) => r.id === record.id,
+      );
 
-      // 清除之前的定时器
-      const existingTimer = jumpTimersRef.current.get(fieldKey);
-      if (existingTimer) {
-        clearTimeout(existingTimer);
+      if (field === "checkInTime") {
+        // 只有当时间格式完整时才跳转
+        if (newValue && isCompleteTime(String(newValue))) {
+          // 填完上班时间，跳转到下班时间
+          const nextKey = `${record.id}-checkOutTime`;
+          const nextInput = inputRefs.current.get(nextKey);
+          nextInput?.focus();
+        }
+      } else if (field === "checkOutTime") {
+        // 只有当时间格式完整时才跳转
+        if (newValue && isCompleteTime(String(newValue))) {
+          // 填完下班时间，跳转到下一天的上班时间
+          const nextRecord = currentWeek.records[recordIndex + 1];
+          if (nextRecord) {
+            const nextKey = `${nextRecord.id}-checkInTime`;
+            const nextInput = inputRefs.current.get(nextKey);
+            nextInput?.focus();
+          }
+        }
+      } else if (field === "appliedOvertime") {
+        // 填完加班时长，也跳转到下一天的上班时间
+        const nextRecord = currentWeek.records[recordIndex + 1];
+        if (nextRecord) {
+          const nextKey = `${nextRecord.id}-checkInTime`;
+          const nextInput = inputRefs.current.get(nextKey);
+          nextInput?.focus();
+        }
       }
-
-      // 设置新的定时器，800ms后跳转
-      const timer = setTimeout(() => {
-        // 延迟执行以确保 state 已更新
-        scheduleJump(record.id, field);
-      }, 800);
-
-      jumpTimersRef.current.set(fieldKey, timer);
     }
 
     // 重置手动标记
     setManualFocus(false);
-  };
-
-  // 执行跳转逻辑
-  const scheduleJump = (recordId: string, field: keyof WorkRecord) => {
-    if (!currentWeek) return;
-
-    const record = currentWeek.records.find(r => r.id === recordId);
-    if (!record) return;
-
-    const recordIndex = currentWeek.records.findIndex(
-      (r) => r.id === recordId,
-    );
-    const value = record[field];
-
-    if (field === "checkInTime") {
-      if (value && isCompleteTime(String(value))) {
-        const nextKey = `${recordId}-checkOutTime`;
-        const nextInput = inputRefs.current.get(nextKey);
-        nextInput?.focus();
-      }
-    } else if (field === "checkOutTime") {
-      if (value && isCompleteTime(String(value))) {
-        const nextRecord = currentWeek.records[recordIndex + 1];
-        if (nextRecord) {
-          const nextKey = `${nextRecord.id}-checkInTime`;
-          const nextInput = inputRefs.current.get(nextKey);
-          nextInput?.focus();
-        }
-      }
-    } else if (field === "appliedOvertime") {
-      if (value !== undefined && value !== null && value !== "") {
-        const nextRecord = currentWeek.records[recordIndex + 1];
-        if (nextRecord) {
-          const nextKey = `${nextRecord.id}-checkInTime`;
-          const nextInput = inputRefs.current.get(nextKey);
-          nextInput?.focus();
-        }
-      }
-    }
   };
 
   if (showWelcome) {
@@ -556,6 +480,7 @@ const Home: React.FC = () => {
             <div className="welcome-tips">
               <p>💡 选择的日期范围将自动创建对应天数的打卡记录</p>
               <p>💡 之后可以再次使用日期筛选器来筛选统计范围</p>
+              <p>💡 可通过右上角同步按钮获取假期数据，节假日自动扣除工时</p>
             </div>
           </div>
         </div>
@@ -571,16 +496,15 @@ const Home: React.FC = () => {
   const todayDate = dayjs().format("YYYY-MM-DD");
   const todayIndex = currentWeek.records.findIndex((r) => r.date === todayDate);
 
-  // 计算进度条宽度（基于工时完成度）
-  const progressPercent =
+  const progressPercent = Math.round(
     (calculationResult.totalEffectiveHours / calculationResult.requiredHours) *
-      100;
-  const progressWidth = Math.min(100, progressPercent);
-  const isOverProgress = progressPercent > 100;
-
-  // 进度显示：已完成天数/总天数
-  const totalDays = currentWeek.records.length;
-  const progressText = `${calculationResult.workDays}/${totalDays}`;
+      100,
+  );
+  const progressWidth = Math.min(
+    100,
+    (calculationResult.totalEffectiveHours / calculationResult.requiredHours) *
+      100,
+  );
 
   return (
     <ConfigProvider locale={zhCN}>
@@ -659,28 +583,25 @@ const Home: React.FC = () => {
                 </div>
                 <div className="progress-bar">
                   <div
-                    className={`progress-fill${isOverProgress ? " over-progress" : ""}`}
+                    className="progress-fill"
                     style={{ width: progressWidth + "%" }}
                   />
                 </div>
-                <div className="progress-text">
-                  {progressText}
-                  {isOverProgress && (
-                    <span className="over-progress-text">
-                      {" "}(超额{Math.floor(progressPercent - 100)}%)
-                    </span>
-                  )}
-                </div>
+                <div className="progress-text">{progressPercent}%</div>
               </div>
             </Card>
 
             <Card className="tips-card" size="small">
               <div className="tips">
-                💡 点击输入框可选择时间，或直接手动输入
-                <br />
-                💡 可通过日期筛选器选择统计范围（最多7天）
-                <br />
-                💡 点击"保存"可保存数据，"导出图片"可生成图片
+                <div className="tips-item">💡 <strong>快捷键：</strong>Ctrl+S 快速保存</div>
+                <div className="tips-item">💡 <strong>自动保存：</strong>输入完整时间后自动保存</div>
+                <div className="tips-item">💡 <strong>智能跳转：</strong>输入后自动跳到下一输入框</div>
+                <div
+                  className="tips-more"
+                  onClick={() => setShowGuide(true)}
+                >
+                  📖 查看更多功能说明
+                </div>
               </div>
             </Card>
           </div>
@@ -691,9 +612,6 @@ const Home: React.FC = () => {
               title={
                 <div className="records-card-title">
                   <span>打卡记录</span>
-                  <span className={`save-status-inline save-status-${saveStatus}`}>
-                    {saveStatusText}
-                  </span>
                   <div className="records-actions">
                     <RangePicker
                       size="small"
@@ -819,7 +737,7 @@ const Home: React.FC = () => {
                               }
                             }}
                           />
-                          {record.checkInTime && record.checkOutTime && record.effectiveHours !== undefined && (
+                          {record.effectiveHours !== undefined && (
                             <div className="record-hours-inline">
                               {(() => {
                                 const hours = Math.floor(record.effectiveHours);
@@ -913,9 +831,9 @@ const Home: React.FC = () => {
               </div>
               <div className="logs-content">
                 <div className="log-item">
-                  <div className="log-version">v{latestVersion.version}</div>
-                  <div className="log-date">{latestVersion.releaseDate}</div>
-                  <div className="log-desc">{latestVersion.features[0] || '版本更新'}</div>
+                  <div className="log-version">v1.0.0</div>
+                  <div className="log-date">2024-01-01</div>
+                  <div className="log-desc">初始版本发布</div>
                 </div>
               </div>
             </Card>
@@ -925,6 +843,12 @@ const Home: React.FC = () => {
         <VersionLogModal
           visible={showVersionLog}
           onClose={() => setShowVersionLog(false)}
+        />
+
+        <GuideModal
+          visible={showGuide}
+          onClose={() => setShowGuide(false)}
+          config={config}
         />
       </div>
     </ConfigProvider>
