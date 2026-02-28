@@ -14,12 +14,16 @@ export function isCompleteTime(timeStr: string): boolean {
 /**
  * 将时间字符串 (HH:mm) 转换为分钟数
  * @param timeStr 时间字符串，格式 "HH:mm"
- * @returns 分钟数（从 00:00 开始）
+ * @returns 分钟数（从 00:00 开始），如果格式无效则返回 NaN
  * @example
  * timeToMinutes("08:30") // 510
  * timeToMinutes("18:00") // 1080
+ * timeToMinutes("09") // NaN (格式不完整)
  */
 export function timeToMinutes(timeStr: string): number {
+  if (!isCompleteTime(timeStr)) {
+    return NaN;
+  }
   const [hours, minutes] = timeStr.split(':').map(Number);
   return hours * 60 + minutes;
 }

@@ -32,12 +32,14 @@
   display: flex;
   align-items: center;
   gap: 12px;
+  flex-wrap: wrap;
 }
 
 .version-number {
   font-size: 18px;
   font-weight: 600;
   color: #1890ff;
+  margin-right: 4px;
 }
 
 .version-date {

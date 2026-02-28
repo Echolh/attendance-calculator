@@ -22,6 +22,7 @@ import "dayjs/locale/zh-cn";
 import html2canvas from "html2canvas";
 import React, { useEffect, useRef, useState } from "react";
 import VersionLogModal from "../../components/VersionLogModal";
+import { getLatestVersion } from "../../data/versionLogs";
 import {
     isSyncedThisMonth,
     syncHolidays,
@@ -62,6 +63,13 @@ const Home: React.FC = () => {
   const [saveStatus, setSaveStatus] = useState<"saved" | "saving" | "unsaved" | "error">("saved");
   const [saveStatusText, setSaveStatusText] = useState<string>("已自动保存");
 
+  // 获取最新版本信息
+  const latestVersion = getLatestVersion();
+
+  // 用 ref 存储 manualSave，避免依赖变化
+  const manualSaveRef = useRef(manualSave);
+  manualSaveRef.current = manualSave;
+
   // 为每个输入框创建 ref
   const inputRefs = useRef<Map<string, HTMLInputElement>>(new Map());
 
@@ -72,6 +80,22 @@ const Home: React.FC = () => {
   useEffect(() => {
     dayjs.locale("zh-cn");
   }, []);
+
+  // 监听键盘快捷键 Ctrl+S 保存
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // 检测 Ctrl+S 或 Cmd+S (Mac)
+      if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+        e.preventDefault();
+        handleSave();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [currentWeek]); // 依赖 currentWeek 确保 handleSave 能访问到最新数据
 
   // 组件挂载时清理旧数据
   useEffect(() => {
@@ -87,9 +111,11 @@ const Home: React.FC = () => {
       // 立即执行自动保存
       const doAutoSave = async () => {
         try {
-          await manualSave();
+          await manualSaveRef.current();
           setSaveStatus("saved");
-          setSaveStatusText("已自动保存");
+          const now = new Date();
+          const timeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+          setSaveStatusText(`已保存 ${timeStr}`);
         } catch {
           setSaveStatus("error");
           setSaveStatusText("保存失败");
@@ -98,7 +124,7 @@ const Home: React.FC = () => {
 
       doAutoSave();
     }
-  }, [currentWeek, manualSave]);
+  }, [currentWeek]);
 
   // 组件卸载时清除定时器
   useEffect(() => {
@@ -254,7 +280,9 @@ const Home: React.FC = () => {
       await manualSave();
       message.success("✅ 已保存");
       setSaveStatus("saved");
-      setSaveStatusText("已保存");
+      const now = new Date();
+      const timeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+      setSaveStatusText(`已保存 ${timeStr}`);
     } catch {
       message.error("❌ 保存失败");
       setSaveStatus("error");
@@ -340,6 +368,16 @@ const Home: React.FC = () => {
     value: string | number | undefined,
   ) => {
     let newValue = value;
+
+    // 对于时间字段，只有当格式完整时才进行验证和保存
+    if (field === "checkInTime" || field === "checkOutTime") {
+      const timeStr = String(newValue);
+      // 如果时间格式不完整（只有小时没有分钟），直接保存但不验证
+      if (timeStr && !isCompleteTime(timeStr)) {
+        updateRecord(record.id, { [field]: newValue });
+        return;
+      }
+    }
 
     if (field === "checkInTime") {
       if (
@@ -549,10 +587,6 @@ const Home: React.FC = () => {
       <div className="home-page" ref={exportRef}>
         <div className="header">
           <h1 className="app-title">考勤计算器</h1>
-          <div className={`save-status save-status-${saveStatus}`}>
-            <span className="save-status-dot"></span>
-            <span className="save-status-text">{saveStatusText}</span>
-          </div>
         </div>
 
         <div className="main-layout">
@@ -657,6 +691,9 @@ const Home: React.FC = () => {
               title={
                 <div className="records-card-title">
                   <span>打卡记录</span>
+                  <span className={`save-status-inline save-status-${saveStatus}`}>
+                    {saveStatusText}
+                  </span>
                   <div className="records-actions">
                     <RangePicker
                       size="small"
@@ -876,9 +913,9 @@ const Home: React.FC = () => {
               </div>
               <div className="logs-content">
                 <div className="log-item">
-                  <div className="log-version">v1.0.0</div>
-                  <div className="log-date">2024-01-01</div>
-                  <div className="log-desc">初始版本发布</div>
+                  <div className="log-version">v{latestVersion.version}</div>
+                  <div className="log-date">{latestVersion.releaseDate}</div>
+                  <div className="log-desc">{latestVersion.features[0] || '版本更新'}</div>
                 </div>
               </div>
             </Card>

@@ -326,11 +326,14 @@ export const useAttendanceStore = create<AttendanceState>((set, get) => ({
   manualSave: async () => {
     const state = get();
     if (!state.currentWeek || !state.currentWeek.records.length) {
+      console.log("manualSave: 没有数据需要保存");
       return;
     }
 
     try {
+      console.log("manualSave: 开始保存", state.currentWeek.records.length, "条记录");
       await saveDailyRecords(state.currentWeek.records);
+      console.log("manualSave: 保存成功");
     } catch (error) {
       console.error("保存失败:", error);
     }

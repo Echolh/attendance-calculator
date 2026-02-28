@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git add src/pages/Home/index.tsx src/utils/calculation.utils.ts src/utils/time.utils.ts)",
+      "Bash(git commit:*)",
+      "Bash(git push origin main)",
+      "Bash(git add src/pages/Home/index.css src/pages/Home/index.tsx src/stores/attendance.store.ts src/utils/calculation.utils.ts)",
+      "Bash(git add src/pages/Home/index.tsx src/pages/Home/index.css)",
+      "Bash(npm run build)",
+      "Bash(git add src/pages/Home/index.tsx)",
+      "Bash(git add src/data/versionLogs.ts)"
+    ]
+  }
+}

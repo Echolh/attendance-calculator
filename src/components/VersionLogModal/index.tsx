@@ -3,7 +3,7 @@
  */
 
 import React from 'react';
-import { Modal, Tag, Badge } from 'antd';
+import { Modal, Tag } from 'antd';
 import { RocketOutlined, BugOutlined, ThunderboltOutlined } from '@ant-design/icons';
 import { getAllVersions } from '../../data/versionLogs';
 import type { VersionLog } from '../../types/attendance.types';
@@ -57,9 +57,8 @@ const VersionLogModal: React.FC<VersionLogModalProps> = ({ visible, onClose }) =
           <div key={version.version} className="version-item">
             <div className="version-header">
               <div className="version-info">
-                <Badge count={index === 0 ? '最新' : null} overflowCount={999}>
-                  <span className="version-number">v{version.version}</span>
-                </Badge>
+                <span className="version-number">v{version.version}</span>
+                {index === 0 && <Tag color="red">最新</Tag>}
                 <span className="version-date">{version.releaseDate}</span>
                 <Tag color={getVersionTypeColor(version.type)}>
                   {getVersionTypeText(version.type)}

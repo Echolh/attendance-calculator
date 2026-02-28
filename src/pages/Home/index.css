@@ -9,7 +9,6 @@
 .header {
   text-align: center;
   margin-bottom: 8px;
-  position: relative;
 }
 
 .app-title {
@@ -17,82 +16,6 @@
   font-size: 18px;
   font-weight: 600;
   margin: 0;
-}
-
-.save-status {
-  position: absolute;
-  right: 12px;
-  top: 50%;
-  transform: translateY(-50%);
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 12px;
-  padding: 4px 10px;
-  border-radius: 12px;
-  background: #f5f5f5;
-  transition: all 0.3s ease;
-}
-
-.save-status-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  animation: pulse-dot 2s infinite;
-}
-
-.save-status-text {
-  font-weight: 500;
-}
-
-.save-status-saved {
-  background: #f6ffed;
-  color: #52c41a;
-}
-
-.save-status-saved .save-status-dot {
-  background: #52c41a;
-  animation: none;
-}
-
-.save-status-saving {
-  background: #e6f7ff;
-  color: #1890ff;
-}
-
-.save-status-saving .save-status-dot {
-  background: #1890ff;
-}
-
-.save-status-unsaved {
-  background: #fff7e6;
-  color: #fa8c16;
-}
-
-.save-status-unsaved .save-status-dot {
-  background: #fa8c16;
-}
-
-.save-status-error {
-  background: #fff1f0;
-  color: #ff4d4f;
-}
-
-.save-status-error .save-status-dot {
-  background: #ff4d4f;
-  animation: none;
-}
-
-@keyframes pulse-dot {
-  0% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.5;
-  }
-  100% {
-    opacity: 1;
-  }
 }
 
 .main-layout {
@@ -261,6 +184,34 @@
   font-size: 18px;
   font-weight: 600;
   color: #333;
+  gap: 12px;
+}
+
+.save-status-inline {
+  font-size: 12px;
+  font-weight: 400;
+  opacity: 0.85;
+  transition: opacity 0.3s ease;
+}
+
+.save-status-inline:hover {
+  opacity: 1;
+}
+
+.save-status-saved {
+  color: #666;
+}
+
+.save-status-saving {
+  color: #1890ff;
+}
+
+.save-status-unsaved {
+  color: #fa8c16;
+}
+
+.save-status-error {
+  color: #ff4d4f;
 }
 
 .records-actions {
